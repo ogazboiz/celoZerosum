@@ -1,6 +1,6 @@
 // hooks/useGameEvents.ts - Real-time event listening with wagmi
 import { useEffect, useCallback } from 'react';
-import { useWatchContractEvent, usePublicClient } from 'wagmi';
+import { useWatchContractEvent, usePublicClient, useChainId } from 'wagmi';
 import { useContractAddress } from './useNetwork';
 import { ZeroSumSimplifiedABI } from '@/config/abis/ZeroSumSimplifiedABI';
 import { toast } from 'react-hot-toast';
@@ -36,19 +36,34 @@ export function useGameEvents(
     enabled?: boolean;
   }
 ) {
+  const chainId = useChainId();
   const gameContractAddress = useContractAddress('ZERO_SUM_SIMPLIFIED');
   const { showToasts = true, enabled = true } = options || {};
+
+  console.log('🎮 useGameEvents initialized:', {
+    gameId,
+    chainId,
+    contractAddress: gameContractAddress,
+    enabled
+  });
 
   // Handle event with optional toast notification
   const handleEvent = useCallback(
     (eventName: GameEventType, logs: any[]) => {
+      console.log(`📡 Received ${eventName} event, logs count:`, logs.length);
+
       logs.forEach((log: any) => {
+        console.log(`📋 Processing log:`, log);
         const eventGameId = log.args.gameId;
+        console.log(`🎮 Event gameId: ${eventGameId}, watching gameId: ${gameId}`);
 
         // If gameId specified, only process events for that game
         if (gameId !== undefined && Number(eventGameId) !== gameId) {
+          console.log(`⏭️ Skipping event for different game (${Number(eventGameId)} !== ${gameId})`);
           return;
         }
+
+        console.log(`✅ Processing event for game ${gameId}`);
 
         const eventData: GameEventData = {
           type: eventName,
@@ -74,20 +89,21 @@ export function useGameEvents(
               toast.success('🎲 Game started! Number generated.');
               break;
             case 'TimeoutHandled':
-              toast.warning('⏰ Timeout handled');
+              toast('⏰ Timeout handled', { icon: '⏰' });
               break;
             case 'GameCancelled':
-              toast.info('❌ Game cancelled');
+              toast('❌ Game cancelled', { icon: '❌' });
               break;
           }
         }
 
         // Call custom callback
         if (onEvent) {
+          console.log(`🔔 Calling custom event callback for ${eventName}`);
           onEvent(eventData);
         }
 
-        console.log(`📡 Event: ${eventName}`, eventData);
+        console.log(`📡 Event processed: ${eventName}`, eventData);
       });
     },
     [gameId, onEvent, showToasts]
@@ -102,13 +118,19 @@ export function useGameEvents(
     enabled,
   });
 
-  // Watch MoveMade event
+  // Watch MoveMade event with detailed logging
   useWatchContractEvent({
     address: gameContractAddress,
     abi: ZeroSumSimplifiedABI,
     eventName: 'MoveMade',
-    onLogs: (logs) => handleEvent('MoveMade', logs),
+    chainId,
+    onLogs: (logs) => {
+      console.log('🚨 MoveMade EVENT DETECTED! Logs:', logs)
+      handleEvent('MoveMade', logs)
+    },
     enabled,
+    poll: true,
+    pollingInterval: 3_000, // Poll every 3 seconds
   });
 
   // Watch GameFinished event

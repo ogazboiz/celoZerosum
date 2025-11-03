@@ -159,6 +159,7 @@ export interface BettingOdds {
 export function useContractProvider() {
   const config = useConfig()
   const { isConnected, address } = useAccount()
+  const chainId = useChainId()
   const [providerReady, setProviderReady] = useState(false)
   const providerRef = useRef<any>(null)
   
@@ -210,6 +211,7 @@ export function useContractProvider() {
     providerReady,
     isConnected,
     address,
+    chainId,
     getProvider: getProviderInstance,
     getWalletClient
   }
@@ -217,10 +219,15 @@ export function useContractProvider() {
 
 // Main hook for contract interactions (write functions)
 export function useZeroSumContract() {
-  const { getWalletClient } = useContractProvider()
+  const { getWalletClient, chainId } = useContractProvider()
   const { getContracts } = useZeroSumData()
   const config = useConfig()
   const [loading, setLoading] = useState(false)
+
+  // Get contract addresses for current chain
+  const contractAddresses = getContractAddresses(chainId)
+  const GAME_CONTRACT_ADDRESS = contractAddresses.GAME
+  const SPECTATOR_CONTRACT_ADDRESS = contractAddresses.SPECTATOR
 
   // Generic transaction handler with better error handling
   const executeTransaction = async (
@@ -238,14 +245,25 @@ export function useZeroSumContract() {
       }
 
       toast.success(loadingMessage)
+      console.log(`🔐 Calling contract on chain ${chainId}...`)
+      console.log(`📍 Contract address: ${GAME_CONTRACT_ADDRESS}`)
+
       const hash = await contractCall()
-      
-      console.log(`Transaction sent: ${hash}`)
-      
-      // Wait for transaction receipt using public client
-      const publicClient = getViemClient(config)
-      const receipt = await publicClient.waitForTransactionReceipt({ hash })
-      console.log(`Transaction confirmed: ${receipt.transactionHash}`)
+
+      console.log(`✅ Transaction sent: ${hash}`)
+      console.log(`🔗 View on explorer: https://explorer.celo.org/alfajores/tx/${hash}`)
+
+      // Wait for transaction receipt using public client with timeout
+      const publicClient = getViemClient(config, { chainId })
+      console.log(`⏳ Waiting for transaction confirmation on chain ${chainId}...`)
+
+      const receipt = await publicClient.waitForTransactionReceipt({
+        hash,
+        timeout: 60_000 // 60 second timeout
+      })
+
+      console.log(`✅ Transaction confirmed in block ${receipt.blockNumber}`)
+      console.log(`📋 Transaction receipt:`, receipt)
       
       // Extract relevant event data if needed
       let gameId = null
@@ -549,29 +567,34 @@ export function useZeroSumContract() {
 
 // Hook for reading contract data
 export function useZeroSumData() {
-  const { providerReady, getProvider, isConnected, address } = useContractProvider()
+  const { providerReady, getProvider, isConnected, address, chainId } = useContractProvider()
   const [contractsReady, setContractsReady] = useState(false)
   const contractsRef = useRef<{ gameContract: any; spectatorContract: any } | null>(null)
 
-  // Initialize contracts when provider is ready
+  // Get contract addresses for current chain
+  const contractAddresses = getContractAddresses(chainId)
+  const GAME_CONTRACT_ADDRESS = contractAddresses.GAME
+  const SPECTATOR_CONTRACT_ADDRESS = contractAddresses.SPECTATOR
+
+  // Initialize contracts when provider is ready or chain changes
   useEffect(() => {
-    console.log('🔗 Contract initialization effect:', { providerReady, isConnected, address })
-    
+    console.log('🔗 Contract initialization effect:', { providerReady, isConnected, address, chainId })
+
     if (providerReady) {
       const provider = getProvider()
       console.log('📡 Provider available:', !!provider)
-      
+      console.log('🌐 Current chain ID:', chainId)
+      console.log('🏗️ Contract addresses for chain', chainId, ':', { GAME_CONTRACT_ADDRESS, SPECTATOR_CONTRACT_ADDRESS })
+
       if (provider) {
         try {
-          console.log('🏗️ Contract addresses:', { GAME_CONTRACT_ADDRESS, SPECTATOR_CONTRACT_ADDRESS })
-          
-          // Use your original simple pattern
-          const gameContract = getContract(GAME_CONTRACT_ADDRESS, ZeroSumSimplifiedABI)
-          const spectatorContract = getContract(SPECTATOR_CONTRACT_ADDRESS, ZeroSumSpectatorABI)
-          
+          // Use your original simple pattern with chainId
+          const gameContract = getContract(GAME_CONTRACT_ADDRESS, ZeroSumSimplifiedABI, { chainId })
+          const spectatorContract = getContract(SPECTATOR_CONTRACT_ADDRESS, ZeroSumSpectatorABI, { chainId })
+
           contractsRef.current = { gameContract, spectatorContract }
           setContractsReady(true)
-          console.log('✅ Contracts initialized and ready')
+          console.log('✅ Contracts initialized and ready for chain', chainId)
         } catch (error) {
           console.error('❌ Contract initialization failed:', error)
           setContractsReady(false)
@@ -582,7 +605,7 @@ export function useZeroSumData() {
       setContractsReady(false)
       contractsRef.current = null
     }
-  }, [providerReady, getProvider])
+  }, [providerReady, getProvider, chainId, GAME_CONTRACT_ADDRESS, SPECTATOR_CONTRACT_ADDRESS])
 
   const getContracts = useCallback(() => {
     if (!contractsReady || !contractsRef.current) {
@@ -1257,8 +1280,13 @@ export function useZeroSumData() {
 
 // Hook for spectator/betting functionality
 export function useSpectatorContract() {
-  const { getWalletClient } = useContractProvider()
+  const { getWalletClient, chainId } = useContractProvider()
   const [loading, setLoading] = useState(false)
+
+  // Get contract addresses for current chain
+  const contractAddresses = getContractAddresses(chainId)
+  const GAME_CONTRACT_ADDRESS = contractAddresses.GAME
+  const SPECTATOR_CONTRACT_ADDRESS = contractAddresses.SPECTATOR
 
   const executeSpectatorTransaction = async (
     contractCall: () => Promise<any>,
@@ -1363,7 +1391,12 @@ export function useSpectatorContract() {
 
 // Hook for spectator/betting data
 export function useSpectatorData() {
-  const { providerReady, getProvider } = useContractProvider()
+  const { providerReady, getProvider, chainId } = useContractProvider()
+
+  // Get contract addresses for current chain
+  const contractAddresses = getContractAddresses(chainId)
+  const GAME_CONTRACT_ADDRESS = contractAddresses.GAME
+  const SPECTATOR_CONTRACT_ADDRESS = contractAddresses.SPECTATOR
 
   const getSpectatorContract = useCallback(() => {
     if (!providerReady) return null

@@ -28,7 +28,7 @@ import {
 } from "lucide-react"
 import { useParams, useRouter } from "next/navigation"
 import { toast } from "react-hot-toast"
-import { useAccount } from "wagmi"
+import { useAccount, useChainId } from "wagmi"
 import {
   useZeroSumData,
   useZeroSumContract,
@@ -37,7 +37,7 @@ import {
   GameStatus,
   GameMode
 } from "@/hooks/useZeroSumContract"
-import { useGameEvents } from "@/hooks/useGameEvents"
+import { useGameEventsPolling } from "@/hooks/useGameEventsPolling"
 import UnifiedGamingNavigation from "@/components/shared/GamingNavigation"
 
 // Enhanced game state interface
@@ -71,10 +71,11 @@ function BattlePage() {
   const params = useParams()
   const router = useRouter()
   const { address, isConnected } = useAccount()
-  
+  const chainId = useChainId()
+
   const battleId = params.id as string
   const gameId = battleId ? parseInt(battleId) : null
-  
+
   // Blockchain hooks
   const {
     getGame,
@@ -84,6 +85,15 @@ function BattlePage() {
     contractsReady,
     providerReady
   } = useZeroSumData()
+
+  // Get contracts for debugging (not exported by default, so we'll use a different approach)
+  const getContractInfo = useCallback(() => {
+    // This is just for logging - the actual contracts are internal to the hook
+    return {
+      gameContract: { address: 'internal' },
+      spectatorContract: { address: 'internal' }
+    }
+  }, [])
   
   const {
     joinGame,
@@ -340,23 +350,61 @@ function BattlePage() {
         console.log('🎯 Move made - refreshing game state')
         const moveData = event.args as { gameId: bigint; player: string; newNumber: bigint; subtraction: bigint }
 
-        // Optimistically update current number
-        if (gameState && Number(moveData.gameId) === gameId) {
-          setGameState(prev => prev ? {
-            ...prev,
-            currentNumber: Number(moveData.newNumber),
-          } : null)
+        // Optimistically update game state
+        if (gameState && Number(moveData.gameId) === gameId && address && moveData.player) {
+          // Find opponent's address
+          const opponentAddress = gameState.players.find(
+            p => p && p.toLowerCase() !== address.toLowerCase()
+          )
+
+          // The player who just moved
+          const playerWhoMoved = moveData.player.toLowerCase()
+
+          // After a move, turn switches to the other player
+          const nextPlayer = playerWhoMoved === address.toLowerCase()
+            ? (opponentAddress || address)  // If I moved, next is opponent
+            : address  // If opponent moved, next is me
+
+          const isNowMyTurn = nextPlayer && nextPlayer.toLowerCase() === address.toLowerCase()
+
+          console.log('🔄 Optimistic update:', {
+            playerWhoMoved,
+            myAddress: address,
+            nextPlayer,
+            opponentAddress,
+            newNumber: Number(moveData.newNumber),
+            wasMyTurn: gameState.isMyTurn,
+            isNowMyTurn
+          })
+
+          setGameState(prev => {
+            if (!prev || !nextPlayer) return prev
+
+            const updated = {
+              ...prev,
+              currentNumber: Number(moveData.newNumber),
+              currentPlayer: nextPlayer,
+              isMyTurn: isNowMyTurn
+            }
+
+            console.log('✅ State updated:', {
+              before: { isMyTurn: prev.isMyTurn, currentPlayer: prev.currentPlayer, currentNumber: prev.currentNumber },
+              after: { isMyTurn: updated.isMyTurn, currentPlayer: updated.currentPlayer, currentNumber: updated.currentNumber }
+            })
+
+            return updated
+          })
         }
 
         // Show toast notification
-        const isMyMove = address && moveData.player.toLowerCase() === address.toLowerCase()
+        const isMyMove = address && moveData.player && moveData.player.toLowerCase() === address.toLowerCase()
         if (isMyMove) {
           toast.success(`Your move: ${moveData.newNumber} (subtracted ${moveData.subtraction})`)
         } else {
           toast('Opponent moved!', { icon: '⚔️' })
         }
 
-        // Debounced refresh to prevent rate limiting
+        // Debounced refresh to get the full accurate state
         debouncedRefresh()
         break
 
@@ -397,10 +445,21 @@ function BattlePage() {
     }
   }, [gameState, gameId, address, debouncedRefresh, router])
 
-  useGameEvents(
+  // Log event listener status with detailed diagnostics
+  useEffect(() => {
+    console.log('🎧 Event listener status:', {
+      gameId,
+      contractsReady,
+      chainId,
+      enabled: !!gameId && contractsReady,
+      providerReady
+    })
+  }, [gameId, contractsReady, chainId, providerReady])
+
+  useGameEventsPolling(
     gameId ?? undefined,
     handleGameEvent,
-    { showToasts: false, enabled: !!gameId && contractsReady }
+    { showToasts: false, enabled: !!gameId }
   )
 
   // Cleanup pending refresh on unmount
