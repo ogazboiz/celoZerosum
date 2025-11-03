@@ -1,5 +1,4 @@
 import type React from "react"
-import { Inter } from "next/font/google"
 import "./globals.css"
 
 import { headers } from 'next/headers'
@@ -7,8 +6,6 @@ import { Providers } from "@/context/providers"
 import { AppKit } from "@/context/appkit"
 import NetworkStatus from "@/components/shared/NetworkStatus"
 import { metadata } from "./metadata"
-
-const inter = Inter({ subsets: ["latin"] })
 
 export { metadata }
 
@@ -34,7 +31,7 @@ export default async function RootLayout({
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="apple-mobile-web-app-title" content="ZeroSum Gaming Arena" />
       </head>
-      <body className={inter.className}>
+      <body className="font-sans antialiased">
         <AppKit>
           <Providers>
             {children}
