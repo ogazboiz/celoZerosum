@@ -31,6 +31,7 @@ enum GameStatus { WAITING, ACTIVE, FINISHED }
 struct StakingInfo {
     uint256 amount;
     uint256 lastReward;
+    
     uint256 rewards;
 }
 
