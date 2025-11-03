@@ -1,23 +1,11 @@
 // config/wagmiAppKit.tsx
 import { cookieStorage, createStorage } from '@wagmi/core'
 import { WagmiAdapter } from '@reown/appkit-adapter-wagmi'
-import { 
-  baseSepolia, 
-  base, 
-  arbitrum, 
-  arbitrumSepolia, 
-  mainnet, 
-  sepolia,
-  lisk,
-  liskSepolia,
-  bsc,
-  bscTestnet,
-  avalanche,
-  avalancheFuji,
-  polygon,
-  polygonMumbai,
-  optimism,
-  optimismSepolia
+import {
+  baseSepolia,
+  base,
+  celo,
+  celoAlfajores
 } from '@reown/appkit/networks'
 import type { AppKitNetwork } from '@reown/appkit/networks'
 
@@ -32,8 +20,8 @@ if (!projectId) {
 const isMainnet = process.env.NEXT_PUBLIC_ENVIRONMENT === 'mainnet'
 
 // Dynamic network configuration based on environment (Billoq-style)
-const mainnetNetworks: [AppKitNetwork, ...AppKitNetwork[]] = [lisk, arbitrum, base, bsc, avalanche, polygon, optimism, mainnet]
-const testnetNetworks: [AppKitNetwork, ...AppKitNetwork[]] = [liskSepolia, arbitrumSepolia, baseSepolia, bscTestnet, avalancheFuji, sepolia, polygonMumbai, optimismSepolia]
+const mainnetNetworks: [AppKitNetwork, ...AppKitNetwork[]] = [base, celo]
+const testnetNetworks: [AppKitNetwork, ...AppKitNetwork[]] = [baseSepolia, celoAlfajores]
 
 // Use appropriate networks based on environment (always ensure at least one network)
 export const networks = isMainnet ? mainnetNetworks : testnetNetworks
