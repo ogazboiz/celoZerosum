@@ -5,7 +5,7 @@ import {
   baseSepolia,
   base,
   celo,
-  celoAlfajores
+  celoSepolia
 } from '@reown/appkit/networks'
 import type { AppKitNetwork } from '@reown/appkit/networks'
 
@@ -21,7 +21,7 @@ const isMainnet = process.env.NEXT_PUBLIC_ENVIRONMENT === 'mainnet'
 
 // Dynamic network configuration based on environment (Billoq-style)
 const mainnetNetworks: [AppKitNetwork, ...AppKitNetwork[]] = [base, celo]
-const testnetNetworks: [AppKitNetwork, ...AppKitNetwork[]] = [baseSepolia, celoAlfajores]
+const testnetNetworks: [AppKitNetwork, ...AppKitNetwork[]] = [baseSepolia, celoSepolia]
 
 // Use appropriate networks based on environment (always ensure at least one network)
 export const networks = isMainnet ? mainnetNetworks : testnetNetworks

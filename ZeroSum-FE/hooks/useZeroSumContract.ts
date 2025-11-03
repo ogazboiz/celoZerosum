@@ -1,12 +1,12 @@
 // hooks/useZeroSumContracts.ts - Your Original Ethers.js Pattern!
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useConfig, useAccount } from 'wagmi'
+import { useConfig, useAccount, useChainId } from 'wagmi'
 import { ethers } from 'ethers'
 import { getProvider, getContract, getViemWalletClient, getViemClient } from '@/config/adapter'
-import { 
-  parseEther, 
-  formatEther, 
-  getContract as viemGetContract, 
+import {
+  parseEther,
+  formatEther,
+  getContract as viemGetContract,
   type Address,
   type Hash,
   type PublicClient,
@@ -16,9 +16,34 @@ import { toast } from 'react-hot-toast'
 import { ZeroSumSimplifiedABI } from '../config/abis/ZeroSumSimplifiedABI'
 import { ZeroSumSpectatorABI } from '../config/abis/ZeroSumSpectatorABI'
 
-// Contract addresses - Use environment variables with fallback to Base Sepolia
-const GAME_CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_BASE_GAME_CONTRACT || "0x78A54d9Fcf0F0aB91fbeBdf722EFcC1039c98514"
-const SPECTATOR_CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_BASE_SPECTATOR_CONTRACT || "0x6AE46C7Ec04d72E7e14268e59Cdfb639f5b68519"
+// Multi-chain contract addresses
+const CONTRACT_ADDRESSES = {
+  // Base Sepolia (84532)
+  84532: {
+    GAME: process.env.NEXT_PUBLIC_BASE_GAME_CONTRACT || "0x78A54d9Fcf0F0aB91fbeBdf722EFcC1039c98514",
+    SPECTATOR: process.env.NEXT_PUBLIC_BASE_SPECTATOR_CONTRACT || "0x6AE46C7Ec04d72E7e14268e59Cdfb639f5b68519"
+  },
+  // Celo Sepolia/Alfajores (44787 - old, 44787 - new Sepolia is 11142220)
+  44787: {
+    GAME: process.env.NEXT_PUBLIC_CELO_GAME_CONTRACT || "0x0f764437ffBE1fcd0d0d276a164610422710B482",
+    SPECTATOR: process.env.NEXT_PUBLIC_CELO_SPECTATOR_CONTRACT || "0xE2228Cf8a49Cd23993442E5EE5a39d6180E0d25f"
+  },
+  // Celo Sepolia (new - 11142220)
+  11142220: {
+    GAME: process.env.NEXT_PUBLIC_CELO_GAME_CONTRACT || "0x0f764437ffBE1fcd0d0d276a164610422710B482",
+    SPECTATOR: process.env.NEXT_PUBLIC_CELO_SPECTATOR_CONTRACT || "0xE2228Cf8a49Cd23993442E5EE5a39d6180E0d25f"
+  }
+} as const
+
+// Helper to get contract addresses for current chain
+const getContractAddresses = (chainId: number) => {
+  const addresses = CONTRACT_ADDRESSES[chainId as keyof typeof CONTRACT_ADDRESSES]
+  if (!addresses) {
+    console.warn(`⚠️ No contract addresses for chain ${chainId}, falling back to Base Sepolia`)
+    return CONTRACT_ADDRESSES[84532]
+  }
+  return addresses
+}
 
 // Safe formatEther function to handle potential errors
 const safeFormatEther = (value: any): string => {
