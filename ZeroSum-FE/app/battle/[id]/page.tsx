@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState, useCallback, useRef } from "react"
 import dynamic from "next/dynamic"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -29,14 +29,15 @@ import {
 import { useParams, useRouter } from "next/navigation"
 import { toast } from "react-hot-toast"
 import { useAccount } from "wagmi"
-import { 
-  useZeroSumData, 
-  useZeroSumContract, 
-  GameData, 
-  PlayerView, 
-  GameStatus, 
-  GameMode 
+import {
+  useZeroSumData,
+  useZeroSumContract,
+  GameData,
+  PlayerView,
+  GameStatus,
+  GameMode
 } from "@/hooks/useZeroSumContract"
+import { useGameEvents } from "@/hooks/useGameEvents"
 import UnifiedGamingNavigation from "@/components/shared/GamingNavigation"
 
 // Enhanced game state interface
@@ -102,7 +103,9 @@ function BattlePage() {
   const [moveAmount, setMoveAmount] = useState("")
   const [localTimeLeft, setLocalTimeLeft] = useState<number | null>(null)
   const [autoReloadCountdown, setAutoReloadCountdown] = useState(90)
-  
+  const lastRefreshTimeRef = useRef<number>(0)
+  const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
   // Fetch game data function
   const fetchGameData = useCallback(async () => {
     if (!gameId || !contractsReady) {
@@ -294,6 +297,120 @@ function BattlePage() {
       setAutoReloadCountdown(90)
     }
   }, [gameState?.status])
+
+  // Debounced refresh to prevent rate limiting (minimum 2 seconds between refreshes)
+  const debouncedRefresh = useCallback(() => {
+    const now = Date.now()
+    const timeSinceLastRefresh = now - lastRefreshTimeRef.current
+
+    // Clear any pending refresh
+    if (refreshTimeoutRef.current) {
+      clearTimeout(refreshTimeoutRef.current)
+    }
+
+    // If we refreshed less than 2 seconds ago, debounce
+    if (timeSinceLastRefresh < 2000) {
+      console.log('⏳ Debouncing refresh - too soon after last refresh')
+      refreshTimeoutRef.current = setTimeout(() => {
+        console.log('🔄 Executing debounced refresh')
+        lastRefreshTimeRef.current = Date.now()
+        fetchGameData()
+      }, 2000 - timeSinceLastRefresh)
+    } else {
+      // Refresh immediately
+      console.log('🔄 Executing immediate refresh')
+      lastRefreshTimeRef.current = now
+      fetchGameData()
+    }
+  }, [fetchGameData])
+
+  // Real-time event listening - Option 2: Custom Event Handling with debouncing
+  const handleGameEvent = useCallback((event: any) => {
+    console.log('🎮 Received blockchain event:', event)
+
+    // Handle each event type with custom logic
+    switch (event.type) {
+      case 'PlayerJoined':
+        console.log('👥 Player joined - refreshing game state')
+        toast.success('A player has joined the game!')
+        debouncedRefresh()
+        break
+
+      case 'MoveMade':
+        console.log('🎯 Move made - refreshing game state')
+        const moveData = event.args as { gameId: bigint; player: string; newNumber: bigint; subtraction: bigint }
+
+        // Optimistically update current number
+        if (gameState && Number(moveData.gameId) === gameId) {
+          setGameState(prev => prev ? {
+            ...prev,
+            currentNumber: Number(moveData.newNumber),
+          } : null)
+        }
+
+        // Show toast notification
+        const isMyMove = address && moveData.player.toLowerCase() === address.toLowerCase()
+        if (isMyMove) {
+          toast.success(`Your move: ${moveData.newNumber} (subtracted ${moveData.subtraction})`)
+        } else {
+          toast('Opponent moved!', { icon: '⚔️' })
+        }
+
+        // Debounced refresh to prevent rate limiting
+        debouncedRefresh()
+        break
+
+      case 'GameFinished':
+        console.log('🏆 Game finished - refreshing game state')
+        const finishData = event.args as { gameId: bigint; winner: string }
+        const didIWin = address && finishData.winner.toLowerCase() === address.toLowerCase()
+
+        if (didIWin) {
+          toast.success('🎉 You won the game!', { duration: 5000 })
+        } else {
+          toast('Game finished!', { icon: '🏁' })
+        }
+
+        debouncedRefresh()
+        break
+
+      case 'NumberGenerated':
+        console.log('🎲 Random number generated - refreshing game state')
+        toast('Game started with random number!', { icon: '🎲' })
+        debouncedRefresh()
+        break
+
+      case 'TimeoutHandled':
+        console.log('⏰ Timeout handled - refreshing game state')
+        toast('Timeout processed', { icon: '⏰' })
+        debouncedRefresh()
+        break
+
+      case 'GameCancelled':
+        console.log('❌ Game cancelled - redirecting to browse')
+        toast.error('Game has been cancelled')
+        setTimeout(() => router.push('/browse'), 2000)
+        break
+
+      default:
+        console.log('📡 Unknown event type:', event.type)
+    }
+  }, [gameState, gameId, address, debouncedRefresh, router])
+
+  useGameEvents(
+    gameId ?? undefined,
+    handleGameEvent,
+    { showToasts: false, enabled: !!gameId && contractsReady }
+  )
+
+  // Cleanup pending refresh on unmount
+  useEffect(() => {
+    return () => {
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current)
+      }
+    }
+  }, [])
 
   // Helper functions
   const formatTime = (seconds: number) => {
@@ -651,21 +768,21 @@ function BattlePage() {
               </CardHeader>
             </Card>
 
-            {/* Reload Notification */}
-            <Card className="bg-amber-500/10 border border-amber-500/30 shadow-lg rounded-2xl">
+            {/* Real-time Updates Notification */}
+            <Card className="bg-emerald-500/10 border border-emerald-500/30 shadow-lg rounded-2xl">
               <CardContent className="py-4">
                 <div className="flex items-center space-x-3">
-                  <RefreshCw className="w-5 h-5 text-amber-400 animate-pulse" />
+                  <div className="w-3 h-3 bg-emerald-400 rounded-full animate-pulse"></div>
                   <div className="flex-1">
-                    <p className="text-amber-400 font-semibold text-sm">
-                      ⚠️ 90s Timer + Manual Refresh Needed
+                    <p className="text-emerald-400 font-semibold text-sm">
+                      ✅ Real-time Updates Enabled
                     </p>
-                    <p className="text-amber-300/80 text-xs mt-1">
-                      Each player has 90 seconds. You won't see opponent moves until refresh. 
-                      Please refresh manually to see updates! (Real-time updates coming in next version)
+                    <p className="text-emerald-300/80 text-xs mt-1">
+                      You'll automatically see opponent moves, game updates, and notifications.
+                      Each player has 90 seconds per turn.
                     </p>
                   </div>
-          
+
                 </div>
               </CardContent>
             </Card>
